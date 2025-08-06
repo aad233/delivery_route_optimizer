@@ -7,21 +7,6 @@ void main() {
   group('GeocodingService', () {
     test('returns coordinates for a valid address', () async {
       final mockClient = MockClient((request) async {
-        final response = [
-          {
-            "place_id": 1,
-            "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
-            "osm_type": "node",
-            "osm_id": 1,
-            "boundingbox": ["51.9244", "51.9245", "4.4777", "4.4778"],
-            "lat": "51.9244",
-            "lon": "4.4777",
-            "display_name": "Rotterdam, South Holland, Netherlands",
-            "class": "place",
-            "type": "city",
-            "importance": 0.8
-          }
-        ];
         return http.Response(
           '[{"lat": "51.9244", "lon": "4.4777"}]',
           200,

@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:delivery_route_optimizer/services/geocoding_service.dart';
 import 'package:delivery_route_optimizer/services/route_optimizer_service.dart';
 import 'package:delivery_route_optimizer/models/delivery_order.dart';
-import 'package:http/http.dart' as http;
 
 class MockGeocodingService extends GeocodingService {
   MockGeocodingService() : super(httpClient: null);
