@@ -131,44 +131,45 @@ class RouteOptimizerService extends ChangeNotifier {
   }
 
   void _reorderByPriority() {
-    // Create a new list for the reordered route
-    final newRoute = <DeliveryOrder>[];
+    final newOptimizedRoute = <DeliveryOrder>[];
+    List<DeliveryOrder> currentRunAsapOrders = [];
+    List<DeliveryOrder> currentRunTimeSpecificOrders = [];
 
-    // Keep track of which orders we've already added
-    final addedIndices = <int>{}; // Fixed: Changed from Set<bool> to Set<int>
-
-    // First, add all restaurant stops in their original positions
     for (int i = 0; i < _optimizedRoute.length; i++) {
-      if (_optimizedRoute[i].address == restaurantAddress) {
-        newRoute.add(_optimizedRoute[i]);
-        addedIndices.add(i); // Fixed: Now adding int instead of bool
+      final order = _optimizedRoute[i];
+
+      if (order.address == restaurantAddress) {
+        if (currentRunTimeSpecificOrders.isNotEmpty ||
+            currentRunAsapOrders.isNotEmpty) {
+          // This is the end of a run.
+          // Sort ASAP orders.
+          currentRunAsapOrders.sort((a, b) => b.priority.compareTo(a.priority));
+          // Add time-specific orders first, then sorted ASAP orders.
+          newOptimizedRoute.addAll(currentRunTimeSpecificOrders);
+          newOptimizedRoute.addAll(currentRunAsapOrders);
+
+          // Reset buffers.
+          currentRunTimeSpecificOrders = [];
+          currentRunAsapOrders = [];
+        }
+        // Add the restaurant stop.
+        newOptimizedRoute.add(order);
+      } else if (order.isAsap) {
+        currentRunAsapOrders.add(order);
+      } else { // Time-specific
+        currentRunTimeSpecificOrders.add(order);
       }
     }
 
-    // Then, add time-specific orders in their original order
-    for (int i = 0; i < _optimizedRoute.length; i++) {
-      if (!addedIndices.contains(i) &&
-          _optimizedRoute[i].deliveryTime != null) {
-        newRoute.add(_optimizedRoute[i]);
-        addedIndices.add(i); // Fixed: Now adding int instead of bool
-      }
+    // Add any remaining orders if the route doesn't end with a restaurant.
+    if (currentRunTimeSpecificOrders.isNotEmpty ||
+        currentRunAsapOrders.isNotEmpty) {
+      currentRunAsapOrders.sort((a, b) => b.priority.compareTo(a.priority));
+      newOptimizedRoute.addAll(currentRunTimeSpecificOrders);
+      newOptimizedRoute.addAll(currentRunAsapOrders);
     }
 
-    // Finally, add ASAP orders sorted by priority (highest first)
-    final asapOrders = <DeliveryOrder>[];
-    for (int i = 0; i < _optimizedRoute.length; i++) {
-      if (!addedIndices.contains(i) && _optimizedRoute[i].isAsap) {
-        asapOrders.add(_optimizedRoute[i]);
-      }
-    }
-
-    // Sort ASAP orders by priority (descending)
-    asapOrders.sort((a, b) => b.priority.compareTo(a.priority));
-
-    // Add the sorted ASAP orders to the new route
-    newRoute.addAll(asapOrders);
-
-    _optimizedRoute = newRoute;
+    _optimizedRoute = newOptimizedRoute;
   }
 
   // Reset all priorities to default
