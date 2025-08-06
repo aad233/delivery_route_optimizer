@@ -3,14 +3,18 @@ class DeliveryOrder {
   final DateTime? deliveryTime;
   final bool isAsap;
   final String? postalCode;
-  final double priority; // New field for priority (0.0 to 1.0)
+  final double priority;
+  final double? latitude;
+  final double? longitude;
 
   DeliveryOrder({
     required this.address,
     this.deliveryTime,
     this.isAsap = false,
     this.postalCode,
-    this.priority = 0.5, // Default priority
+    this.priority = 0.5,
+    this.latitude,
+    this.longitude,
   });
 
   factory DeliveryOrder.fromJson(Map<String, dynamic> json) {
@@ -21,7 +25,9 @@ class DeliveryOrder {
           : null,
       isAsap: json['isAsap'] ?? false,
       postalCode: json['postalCode'],
-      priority: json['priority'] ?? 0.5, // Handle missing priority
+      priority: json['priority'] ?? 0.5,
+      latitude: json['latitude'],
+      longitude: json['longitude'],
     );
   }
 
@@ -31,18 +37,29 @@ class DeliveryOrder {
       'deliveryTime': deliveryTime?.toIso8601String(),
       'isAsap': isAsap,
       'postalCode': postalCode,
-      'priority': priority, // Include priority in JSON
+      'priority': priority,
+      'latitude': latitude,
+      'longitude': longitude,
     };
   }
 
-  // Create a copy with updated priority
-  DeliveryOrder copyWithPriority(double newPriority) {
+  DeliveryOrder copyWith({
+    String? address,
+    DateTime? deliveryTime,
+    bool? isAsap,
+    String? postalCode,
+    double? priority,
+    double? latitude,
+    double? longitude,
+  }) {
     return DeliveryOrder(
-      address: address,
-      deliveryTime: deliveryTime,
-      isAsap: isAsap,
-      postalCode: postalCode,
-      priority: newPriority,
+      address: address ?? this.address,
+      deliveryTime: deliveryTime ?? this.deliveryTime,
+      isAsap: isAsap ?? this.isAsap,
+      postalCode: postalCode ?? this.postalCode,
+      priority: priority ?? this.priority,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
