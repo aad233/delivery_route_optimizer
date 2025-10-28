@@ -44,7 +44,7 @@ class _AddDeliveryScreenState extends State<AddDeliveryScreen> {
     }
   }
 
-  void _addDelivery() {
+  Future<void> _addDelivery() async {
     if (_addressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter an address')),
@@ -55,18 +55,27 @@ class _AddDeliveryScreenState extends State<AddDeliveryScreen> {
     final routeOptimizer =
         Provider.of<RouteOptimizerService>(context, listen: false);
 
-    routeOptimizer.addOrder(
-      DeliveryOrder(
-        address: _addressController.text.trim(),
-        postalCode: _postalCodeController.text.trim().isEmpty
-            ? null
-            : _postalCodeController.text.trim(),
-        deliveryTime: _selectedTime,
-        isAsap: _isAsap,
-      ),
-    );
-
-    Navigator.pop(context);
+    try {
+      await routeOptimizer.addOrder(
+        DeliveryOrder(
+          address: _addressController.text.trim(),
+          postalCode: _postalCodeController.text.trim().isEmpty
+              ? null
+              : _postalCodeController.text.trim(),
+          deliveryTime: _selectedTime,
+          isAsap: _isAsap,
+        ),
+      );
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   @override

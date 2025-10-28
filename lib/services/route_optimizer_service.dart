@@ -1,10 +1,18 @@
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import '../models/delivery_order.dart';
+import 'geocoding_service.dart';
 
 class RouteOptimizerService extends ChangeNotifier {
   static const String restaurantAddress =
       'Wolphaertsbocht 276A, 3081 KR Rotterdam';
   static const String restaurantPostal = '3081KR';
+
+  static const Duration _maxTimeBetweenOrders = Duration(minutes: 45);
+  static const int _minutesPerKm = 5;
+  static const int _minutesPerStop = 5;
+  static const int _minPostalCodeLength = 4;
+  static const int _postalCodePrefixLength = 2;
 
   List<DeliveryOrder> _orders = [];
   List<DeliveryOrder> _optimizedRoute = [];
@@ -21,9 +29,22 @@ class RouteOptimizerService extends ChangeNotifier {
     optimizeRoute();
   }
 
-  void addOrder(DeliveryOrder order) {
-    _orders.add(order);
-    optimizeRoute();
+  Future<void> addOrder(DeliveryOrder order) async {
+    try {
+      final coords =
+          await _geocodingService.getCoordinatesFromAddress(order.address);
+      final newOrder = order.copyWith(
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      );
+      _orders.add(newOrder);
+      optimizeRoute();
+    } catch (e) {
+      // Handle geocoding errors, e.g., by showing a message to the user
+      debugPrint('Error adding order: $e');
+      // Optionally, rethrow the exception to be caught by the UI
+      rethrow;
+    }
   }
 
   void removeOrder(int index) {
@@ -55,7 +76,7 @@ class RouteOptimizerService extends ChangeNotifier {
       // Check if we need to start a new run
       if (currentRun.isNotEmpty &&
           order.deliveryTime!.difference(currentRun.last.deliveryTime!) >
-              const Duration(minutes: 45)) {
+              _maxTimeBetweenOrders) {
         runs.add(_finalizeRun(currentRun));
         currentRun = [];
       }
@@ -100,20 +121,44 @@ class RouteOptimizerService extends ChangeNotifier {
 
   List<DeliveryOrder> _findNearbyOrders(
       List<DeliveryOrder> orders, String referencePostal) {
-    if (referencePostal.length < 4) return [];
+    if (referencePostal.length < _minPostalCodeLength) return [];
     return orders.where((order) {
       final orderPostal = order.postalCode ?? '';
-      return orderPostal.length >= 4 &&
-          orderPostal.substring(0, 2) == referencePostal.substring(0, 2);
+      return orderPostal.length >= _minPostalCodeLength &&
+          orderPostal.substring(0, _postalCodePrefixLength) ==
+              referencePostal.substring(0, _postalCodePrefixLength);
     }).toList();
   }
 
   void _calculateRouteStats() {
-    // Mock distance and time calculation
-    _totalDistance = _optimizedRoute.length * 5.2;
-    _estimatedTime = '${(_optimizedRoute.length * 15).toString()} minutes';
+    double totalDistance = 0.0;
+    for (int i = 0; i < _optimizedRoute.length - 1; i++) {
+      final from = _optimizedRoute[i];
+      final to = _optimizedRoute[i + 1];
+
+      if (from.latitude != null &&
+          from.longitude != null &&
+          to.latitude != null &&
+          to.longitude != null) {
+        totalDistance += Geolocator.distanceBetween(
+          from.latitude!,
+          from.longitude!,
+          to.latitude!,
+          to.longitude!,
+        );
+      }
+    }
+    _totalDistance = totalDistance / 1000; // Convert to km
+
+    // Simple time estimation: 5 minutes per km + 5 minutes per stop
+    final totalTime =
+        (_totalDistance * _minutesPerKm) + (_optimizedRoute.length * _minutesPerStop);
+    _estimatedTime = '${totalTime.round()} minutes';
   }
 
+  final GeocodingService _geocodingService;
+
+  RouteOptimizerService(this._geocodingService);
   // New method to update priority and reorder
   void updatePriority(int index, double priority) {
     if (index < _optimizedRoute.length) {
@@ -121,7 +166,7 @@ class RouteOptimizerService extends ChangeNotifier {
       if (_optimizedRoute[index].address == restaurantAddress) return;
 
       // Create a new list with updated priority
-      final updatedOrder = _optimizedRoute[index].copyWithPriority(priority);
+      final updatedOrder = _optimizedRoute[index].copyWith(priority: priority);
       _optimizedRoute[index] = updatedOrder;
 
       // Reorder based on priority while respecting time constraints
@@ -131,51 +176,52 @@ class RouteOptimizerService extends ChangeNotifier {
   }
 
   void _reorderByPriority() {
-    // Create a new list for the reordered route
-    final newRoute = <DeliveryOrder>[];
+    final newOptimizedRoute = <DeliveryOrder>[];
+    List<DeliveryOrder> currentRunAsapOrders = [];
+    List<DeliveryOrder> currentRunTimeSpecificOrders = [];
 
-    // Keep track of which orders we've already added
-    final addedIndices = <int>{}; // Fixed: Changed from Set<bool> to Set<int>
-
-    // First, add all restaurant stops in their original positions
     for (int i = 0; i < _optimizedRoute.length; i++) {
-      if (_optimizedRoute[i].address == restaurantAddress) {
-        newRoute.add(_optimizedRoute[i]);
-        addedIndices.add(i); // Fixed: Now adding int instead of bool
+      final order = _optimizedRoute[i];
+
+      if (order.address == restaurantAddress) {
+        if (currentRunTimeSpecificOrders.isNotEmpty ||
+            currentRunAsapOrders.isNotEmpty) {
+          // This is the end of a run.
+          // Sort ASAP orders.
+          currentRunAsapOrders.sort((a, b) => b.priority.compareTo(a.priority));
+          // Add time-specific orders first, then sorted ASAP orders.
+          newOptimizedRoute.addAll(currentRunTimeSpecificOrders);
+          newOptimizedRoute.addAll(currentRunAsapOrders);
+
+          // Reset buffers.
+          currentRunTimeSpecificOrders = [];
+          currentRunAsapOrders = [];
+        }
+        // Add the restaurant stop.
+        newOptimizedRoute.add(order);
+      } else if (order.isAsap) {
+        currentRunAsapOrders.add(order);
+      } else { // Time-specific
+        currentRunTimeSpecificOrders.add(order);
       }
     }
 
-    // Then, add time-specific orders in their original order
-    for (int i = 0; i < _optimizedRoute.length; i++) {
-      if (!addedIndices.contains(i) &&
-          _optimizedRoute[i].deliveryTime != null) {
-        newRoute.add(_optimizedRoute[i]);
-        addedIndices.add(i); // Fixed: Now adding int instead of bool
-      }
+    // Add any remaining orders if the route doesn't end with a restaurant.
+    if (currentRunTimeSpecificOrders.isNotEmpty ||
+        currentRunAsapOrders.isNotEmpty) {
+      currentRunAsapOrders.sort((a, b) => b.priority.compareTo(a.priority));
+      newOptimizedRoute.addAll(currentRunTimeSpecificOrders);
+      newOptimizedRoute.addAll(currentRunAsapOrders);
     }
 
-    // Finally, add ASAP orders sorted by priority (highest first)
-    final asapOrders = <DeliveryOrder>[];
-    for (int i = 0; i < _optimizedRoute.length; i++) {
-      if (!addedIndices.contains(i) && _optimizedRoute[i].isAsap) {
-        asapOrders.add(_optimizedRoute[i]);
-      }
-    }
-
-    // Sort ASAP orders by priority (descending)
-    asapOrders.sort((a, b) => b.priority.compareTo(a.priority));
-
-    // Add the sorted ASAP orders to the new route
-    newRoute.addAll(asapOrders);
-
-    _optimizedRoute = newRoute;
+    _optimizedRoute = newOptimizedRoute;
   }
 
   // Reset all priorities to default
   void resetPriorities() {
     for (int i = 0; i < _optimizedRoute.length; i++) {
       if (_optimizedRoute[i].address != restaurantAddress) {
-        _optimizedRoute[i] = _optimizedRoute[i].copyWithPriority(0.5);
+        _optimizedRoute[i] = _optimizedRoute[i].copyWith(priority: 0.5);
       }
     }
     optimizeRoute();

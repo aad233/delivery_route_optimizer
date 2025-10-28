@@ -17,15 +17,16 @@ void main() async {
   final mapService = MapService();
   await mapService.initializeMap();
 
+  final geocodingService = GeocodingService();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => OcrService()),
-        ChangeNotifierProvider(create: (_) => RouteOptimizerService()),
+        ChangeNotifierProvider(
+            create: (_) => RouteOptimizerService(geocodingService)),
         ChangeNotifierProvider<MapService>(create: (_) => mapService),
-        Provider<GeocodingService>(
-            create: (_) =>
-                GeocodingService()), // Fixed: Changed to Provider instead of ChangeNotifierProvider
+        Provider<GeocodingService>(create: (_) => geocodingService),
       ],
       child: const MyApp(),
     ),

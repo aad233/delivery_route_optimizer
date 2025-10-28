@@ -245,7 +245,7 @@ class RouteScreen extends StatelessWidget {
                         if (delivery.address !=
                             RouteOptimizerService.restaurantAddress) {
                           final coords = await geocodingService
-                              .getCoordinates(delivery.address);
+                              .getCoordinatesFromAddress(delivery.address);
                           debugPrint(
                               'Coordinates for ${delivery.address}: ${coords.latitude}, ${coords.longitude}');
                         }
